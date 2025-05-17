@@ -1,7 +1,10 @@
 [project]
-name = "zero"
+name = "jean"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "dspy>=2.6.23",
+    "mcp>=1.9.0",
+]
