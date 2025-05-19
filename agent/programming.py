@@ -1,13 +1,21 @@
+from typing import Any, Dict, List
+
 import dspy
+
 from mcp_client import MCPConnection
-from typing import List, Dict, Any
+
 
 class ProgrammingSignature(dspy.Signature):
-    question: str = dspy.InputField(description="The question to answer")
-    answer: str = dspy.OutputField(description="The answer to the question")
+    """
+    Answer technical programming questions with code examples and clear explanations.
+    """
+    question: str = dspy.InputField(description="This is the question may included code examples and clear explanations.")
+    context: str = dspy.InputField(optional=True, description="This is the context of the question or summary from previous conversation.")
+    answer: str = dspy.OutputField(description="This is the answer to the question may included code examples and clear explanations.")
     
 class ProgrammingModule(dspy.Module):
     def __init__(self, mcp_connections: List[MCPConnection], llm: Dict[str, Any]):
+
         self.llm = dspy.LM(
             model=llm["model"],
             api_key=llm["api_key"],
