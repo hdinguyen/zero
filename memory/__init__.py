@@ -61,33 +61,22 @@ class Database:
         except SQLAlchemyError as e:
             print(f"Query error: {e}")
             return []
+    
+    def retrieve_similar_conversations(self, embedding: list[float], threshold: float = 0.5, top_n: int = 5):
+        vector_str = str(embedding)
         
-    def retrieve_similar_conversations(self, embedding: list[float], top_n=5):
-        # Use SQL function to cast array to vector
-        vector_embedding = func.vector(embedding)
+        result = self.session.query(Conversation).filter((1 - func.cosine_distance(
+            Conversation.embedding, 
+            text(f"'{vector_str}'::vector")
+            )) > threshold).order_by(
+                (1 - func.cosine_distance(
+                    Conversation.embedding, 
+                    text(f"'{vector_str}'::vector")
+                )).desc()
+            ).limit(top_n).all()
+        return result
         
-        # Query with proper vector casting
-        top_n_results = self.session.query(Conversation).order_by(
-            Conversation.embedding.op('<->')(vector_embedding)
-        ).limit(top_n).all()
-
-        # Convert result to list of dictionaries
-        conversations = [
-            {
-                "id": row.id,
-                "created_at": row.created_at,
-                "question": row.question,
-                "answer": row.answer,
-                "summary": row.summary,
-                "title": row.title,
-
-            }
-            for row in top_n_results
-        ]
-
-        return conversations
-        
-    def add_row(self, row: Any) -> Optional[int]:
+    async def add_row(self, row: Any) -> Optional[int]:
         """Insert a new record and return its ID."""
         if not row:
             return None
