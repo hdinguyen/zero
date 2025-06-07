@@ -1,80 +1,84 @@
-import asyncio
+from fastapi import FastAPI, Depends, HTTPException
+from typing import Dict, Any
 from contextlib import asynccontextmanager
-from datetime import datetime
+from agent.agent_tool_manager import AgentToolManager
+from utils import logger
 
-import dspy
-import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware import Middleware
-from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+mcp_config = {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "Brave search": {
+      "command": "env",
+      "args": [
+        "BRAVE_API_KEY=BSAFvyFnGBcWt8IImCnXR_7tgwymtdr",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ]
+    },
+}
 
-from agent import GeneralAgent
-from conf import config
-from external.getpantry import get_pantry_data_by_basket
-from mcp_client.dspy_mcp import DspyMcpTool
-from memory import Database, embed_text
-from memory.conversation import Conversation
-from memory.debug import Debug
-
-
-async def init_agent():
-    db = Database()
-
-    mcp_config = get_pantry_data_by_basket(config["getpantry"]["token"],'mcp')
-    dspy_mcp_tool = DspyMcpTool(mcp_config)
-    dspy_tools = await dspy_mcp_tool.get_dspy_tools()
-
-    llm = dspy.LM(
-        model=config["llm"]["model"],
-        api_key=config["llm"]["api_key"]
-    )
-    
-    agent = GeneralAgent(llm, dspy_tools)
-    await agent.start()
-    return agent, dspy_mcp_tool, db
-    
+agent_manager = AgentToolManager(mcp_config)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Application is starting up...")
-    app.state.agent, app.state.dspy_mcp_tool, app.state.db = await init_agent()
-    
+    # Startup - nothing needed since agent is lazy-loaded
+    await agent_manager.load_agent()
     yield
-    
-    # Shutdown code
-    print("Application is shutting down...")
-    await app.state.dspy_mcp_tool.cleanup()
-    app.state.db.close()
+    # Shutdown
+    await agent_manager.close_agent()
 
 app = FastAPI(lifespan=lifespan)
 
-@app.post("/ask")
-async def ask(ask: dict):
-    question = ask["question"]
-    if question.strip() == "":
-        return {"error": "Question is required"}
+@app.post("/query")
+async def query_agent(input:dict):
+    try:
+        result = await agent_manager.acall(input['instruction'])
+        return {"result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# @app.post("/reload-config")
+# async def reload_agent_config(new_config: Dict[str, Any]):
+#     """Reload agent with new MCP configuration"""
+#     try:
+#         result = await agent_manager.reload_agent(new_config)
+#         return result
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to reload agent: {str(e)}")
+
+# @app.get("/current-config")
+# async def get_current_config():
+#     """Get current agent configuration"""
+#     config = agent_manager.get_current_config()
+#     return {"current_config": config}
+
+@app.get("/health")
+async def health_check():
+    # try:
+    #     config = agent_manager.get_current_config()
+    #     is_ready = agent_manager.is_agent_ready()
+    #     return {
+    #         "status": "healthy" if is_ready else "initializing", 
+    #         "agent_ready": is_ready,
+    #         "current_config": config
+    #     }
+    # except Exception as e:
+    #     return {
+    #         "status": "unhealthy", 
+    #         "agent_ready": False,
+    #         "error": str(e)
+    #     } 
+    return {"status": "healthy"}
     
-    embedding_question = embed_text(question)
-    similar_conversations = app.state.db.retrieve_similar_conversations(embedding_question)
-    
-    response = await app.state.agent.acall(question, similar_conversations)
-    embedding = embed_text(f"{question}\n{response.answer}")    
-
-    conversation_id = app.state.db.add_row(Conversation(
-        created_at=datetime.now(),
-        question=question,
-        answer=response.answer,
-        embedding=embedding
-    ))
-
-    app.state.db.add_row(Debug(
-        created_at=datetime.now(),
-        conversation_id=conversation_id,
-        reasoning=response.reasoning,
-        trajectory=str(response.trajectory),
-        human_feedback=""
-    ))
-    return {"answer": response.answer}
-
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

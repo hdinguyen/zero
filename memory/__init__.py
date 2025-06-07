@@ -12,6 +12,8 @@ from sqlalchemy.sql import func
 from conf import config
 from memory.conversation import Conversation
 
+from utils import logger
+
 Base = declarative_base()
 
 class Database:
@@ -42,9 +44,9 @@ class Database:
         self.session = sessionmaker(bind=self.engine)()
         try:
             with self.engine.connect() as connection:
-                print("Connection successful!")
+                logger.info("Connection successful!")
         except Exception as e:
-            print(f"Failed to connect: {e}")
+            logger.error(f"Failed to connect: {e}")
             
         self._initialized = True
     
@@ -59,7 +61,7 @@ class Database:
                 result = conn.execute(text(sql), params or {})
                 return [dict(row) for row in result]
         except SQLAlchemyError as e:
-            print(f"Query error: {e}")
+            logger.error(f"Query error: {e}")
             return []
     
     def retrieve_similar_conversations(self, embedding: list[float], threshold: float = 0.5, top_n: int = 5):
@@ -103,7 +105,7 @@ class Database:
                 row = result.fetchone()
                 return row[0] if row else None
         except SQLAlchemyError as e:
-            print(f"Add error: {e}")
+            logger.error(f"Add error: {e}")
             return None
     
     def update(self, table: str, id_value: int, data: Dict[str, Any]) -> bool:
@@ -122,7 +124,7 @@ class Database:
                 conn.commit()
                 return result.rowcount > 0
         except SQLAlchemyError as e:
-            print(f"Update error: {e}")
+            logger.error(f"Update error: {e}")
             return False
     
     def close(self):
