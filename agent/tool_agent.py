@@ -13,7 +13,7 @@ from utils import logger
 class ToolAgent(dspy.Module):
     def __init__(self, mcp_config:dict, agent_name:str, lm:dspy.LM):
         self.lm = lm
-        self.agent_name = ""
+        self.agent_name = agent_name
         self.agent_description = ""
         self.client = MCPClient()
         self.reAct: Optional[dspy.ReAct] = None
@@ -25,16 +25,26 @@ class ToolAgent(dspy.Module):
         if len(args) == 0:
             raise ValueError("No input provided")
         input = args[0]
-        context = args[1] if len(args) > 1 else ""
-        return await self.reAct.acall(input=input, context=context)
+        goal = args[1] if len(args) > 1 else ""
+        context = args[2] if len(args) > 1 else ""
+        logger.debug(f"""
+Tool agent {self.agent_name}
+input: {input}
+goal: {goal}
+context: {context}""")
+        return await self.reAct.acall(input=input, goal=goal,context=context)
     
     async def connect(self):
-        tool_information = await self.client.connect(self.mcp_config)
-        self.agent_description = generate_agent_description(information=tool_information)
+        try:
+            tool_information = await self.client.connect(self.mcp_config)
+            self.agent_description = generate_agent_description(information=tool_information)
 
-        dspy_tools = await self.client.convert_to_dspy()
-        self.reAct = dspy.ReAct("input, context -> result", tools=dspy_tools)
-        self.reAct.set_lm(self.lm)
+            dspy_tools = await self.client.convert_to_dspy()
+            self.reAct = dspy.ReAct("input, goal, context -> result", tools=dspy_tools)
+            self.reAct.set_lm(self.lm)
+        except Exception as e:
+            logger.error(f"Error during setup MCP: {self.agent_name}")
+            raise e
 
     async def __aenter__(self):
         return self
@@ -68,11 +78,14 @@ class MCPClient:
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_param))
         self.stdio, self.write = stdio_transport
         self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
-
-        await self.session.initialize()
-        response = await self.session.list_tools()
-        tools_information = self.get_tools_information(response.tools)
-        return tools_information
+        try:
+            await self.session.initialize()
+            response = await self.session.list_tools()
+            tools_information = self.get_tools_information(response.tools)
+            return tools_information
+        except Exception as e:
+            logger.error(f"Error during setup MCP: {e}")
+            raise e
 
     async def convert_to_dspy(self):
         dspy_tools = []
