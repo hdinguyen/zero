@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 #from memory.conversation import add_new_conversation, Conversation, near_text_search
 from memory import Memory
 from fastapi.middleware.cors import CORSMiddleware
-
+import dspy
 
 mcp_config = {
     "context7": {
@@ -63,20 +63,25 @@ app.add_middleware(
 @app.post("/query")
 async def query_agent(input:dict, background_tasks: BackgroundTasks, thread_id: Optional[str] = None):
     try:
-        mem_summary = ""
-        if thread_id is not None:
-            mem_summary = json.dumps(memory.memcache.get_summary(thread_id=thread_id))
-        else:
-            thread_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        
-        result = await agent_manager.acall(question=input['question'], context=mem_summary)
-        background_tasks.add_task(memory.adding_new_memory, user_message=input['question'], assistant_response=result, thread_id=thread_id)
-        return {
-            "result": result,
-            "thread_id": thread_id
-        }
+      mem_summary = ""
+      if thread_id is not None:
+          mem_summary = json.dumps(memory.memcache.get_summary(thread_id=thread_id))
+      else:
+          thread_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+      
+      result = await agent_manager.acall(question=input['question'], context=mem_summary)
+      background_tasks.add_task(memory.adding_new_memory, user_message=input['question'], assistant_response=result, thread_id=thread_id)
+      return {
+          "result": result,
+          "thread_id": thread_id
+      }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+      logger.error(f"Error in query_agent:{e}")
+      logger.debug(f"""
+                   
+Error in query_agent:{dspy.inspect_history(1)}
+""")
+      raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fetch_thread_ids")
 async def get_thread_ids(limit: int = 10, offset: int = 0):

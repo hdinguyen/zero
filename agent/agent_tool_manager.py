@@ -23,19 +23,25 @@ class AgentToolManagerSignature(dspy.Signature):
 class AgentToolManagerConclusion(dspy.Signature):
     original_question: str = dspy.InputField(description="The original question or input from user")
     data_collection: list[dict] = dspy.InputField(description="List of data response from each agent")
-    output_format: str = dspy.InputField(description="The output format of the answer to user, what is the layout, sessions, should it contained table, markdown, or text, tree, ... This ")
+    display_format: str = dspy.InputField(description="Required output format: 'text', 'markdown', 'table', or 'json'")
     final_answer: str = dspy.OutputField(description="The conclusion of the agent tool manager, must short but not missing any important information")
 
 class AgentOutputAdvisor(dspy.Signature):
     """Decision which format output is the best for the user's question, this output will be LLM instruction for the agent to generate the output"""
     question: str = dspy.InputField(description="The question from user")
-    format_output: str = dspy.OutputField(description="The output format of the answer to user, what is the layout, sessions, should it contained table, markdown, or text, tree, ... This ")
+    format_output: str = dspy.OutputField(description="""The output format of the answer to user, what is the layout, sessions, should it contained table, markdown, or text, tree, ...
+Purpose of this output is to help the agent to generate the output in the best format""")
 
 class AgentToolManager(dspy.Module):
     def __init__(self, mcp_config:Optional[Dict[str, Any]] = None):
         self.lm = dspy.LM(
             model=config.get("tool_llm","model"),
             api_key=config.get("tool_llm","api_key")
+        )
+        self.conclusion_lm = dspy.LM(
+            model=config.get("conclusion_llm","model"),
+            api_key=config.get("conclusion_llm","api_key"),
+            max_tokens=6000
         )
         
         self._agents: Dict[str, ToolAgent] = {}
@@ -51,7 +57,7 @@ class AgentToolManager(dspy.Module):
         """Change the mode of the agent tool manager"""
         if mode == "free":
             self._coodinator.set_lm(self.lm)
-            self._conclusion.set_lm(self.lm)
+            self._conclusion.set_lm(self.conclusion_lm)
             self._output_advisor.set_lm(self.lm)
         else:
             raise ValueError("Unsupported mode, only 'free' is supported for now")
@@ -104,7 +110,8 @@ class AgentToolManager(dspy.Module):
     async def acall(self, question:str, context:str = ""):
         output_format, plan = await self.generate_output_format(question=question, context=context)
         data_collection = await self.execute_plans_parallel(plan)
-        conclusion = await self._conclusion.acall(original_question=question, data_collection=data_collection, output_format=output_format)
+        conclusion = await self._conclusion.acall(original_question=question, data_collection=data_collection, display_format=output_format)
+        #conclusion = await self._conclusion.acall(original_question=question, data_collection=data_collection)
         return conclusion.final_answer
 
     async def generate_output_format(self, question:str, context:str = ""):
