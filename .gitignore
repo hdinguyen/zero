@@ -175,3 +175,5 @@ cython_debug/
 
 **/config.ini
 .vscode
+memory/redis_data/
+memory/weaviate_data/

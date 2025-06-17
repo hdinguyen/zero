@@ -1,10 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException
-from typing import Dict, Any
+import json
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 from agent.agent_tool_manager import AgentToolManager
+from agent.internal_gen import extract_memory_info
 from utils import logger
 from datetime import datetime, timezone
-from memory.conversation import add_new_conversation, Conversation, near_text_search
+#from memory.conversation import add_new_conversation, Conversation, near_text_search
+from memory import Memory
+from fastapi.middleware.cors import CORSMiddleware
+
 
 mcp_config = {
     "context7": {
@@ -21,7 +26,7 @@ mcp_config = {
     "brave-search": {
       "command": "env",
       "args": [
-        "BRAVE_API_KEY=xxx",
+        "BRAVE_API_KEY=BSAFvyFnGBcWt8IImCnXR_7tgwymtdr",
         "npx",
         "-y",
         "@modelcontextprotocol/server-brave-search"
@@ -34,6 +39,7 @@ mcp_config = {
 }
 
 agent_manager = AgentToolManager(mcp_config)
+memory = Memory()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,22 +51,40 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # React dev server
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+@app.post("/query/{thread_id}")
 @app.post("/query")
-async def query_agent(input:dict):
+async def query_agent(input:dict, background_tasks: BackgroundTasks, thread_id: Optional[str] = None):
     try:
-        response = near_text_search(input['question'])
-        result = await agent_manager.acall(input['question'])
-        add_new_conversation(Conversation(
-            thread_id=input['thread_id'],
-            timestamp=datetime.now(timezone.utc),
-            user_message=input['question'],
-            assistant_response=result,
-            category="question",
-            tags=["question"]
-        ))
-        return {"result": result}
+        mem_summary = ""
+        if thread_id is not None:
+            mem_summary = json.dumps(memory.memcache.get_summary(thread_id=thread_id))
+        else:
+            thread_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        
+        result = await agent_manager.acall(question=input['question'], context=mem_summary)
+        background_tasks.add_task(memory.adding_new_memory, user_message=input['question'], assistant_response=result, thread_id=thread_id)
+        return {
+            "result": result,
+            "thread_id": thread_id
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/fetch_thread_ids")
+async def get_thread_ids(limit: int = 10, offset: int = 0):
+    return memory.conversation.get_distinct_thread_ids(limit=limit, offset=offset)
+
+@app.get("/fetch_conversation/{thread_id}")
+async def get_conversation(thread_id: str, limit: int = 50, offset: int = 0):
+    return memory.conversation.load_conversation_by_thread_id(thread_id=thread_id, limit=limit, offset=offset)
 
 @app.get("/health")
 async def health_check():

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 import asyncio
 from agent.tool_agent import ToolAgent
 import dspy
+from conf import config
 from utils import logger
 
 class PlanModel(BaseModel):
@@ -16,29 +17,45 @@ class PlanModel(BaseModel):
 
 class AgentToolManagerSignature(dspy.Signature):
     question: str = dspy.InputField(description="High level question or input from user")
+    context: str = dspy.InputField(description="The context of the conversation")
     agent_description: str = dspy.InputField(description="Description of the agent")
     execution_plan: list[PlanModel] = dspy.OutputField(description="List of objects containing agent name and input for each agent to execute the task at agent task level")
-
 class AgentToolManagerConclusion(dspy.Signature):
     original_question: str = dspy.InputField(description="The original question or input from user")
     data_collection: list[dict] = dspy.InputField(description="List of data response from each agent")
+    output_format: str = dspy.InputField(description="The output format of the answer to user, what is the layout, sessions, should it contained table, markdown, or text, tree, ... This ")
     final_answer: str = dspy.OutputField(description="The conclusion of the agent tool manager, must short but not missing any important information")
+
+class AgentOutputAdvisor(dspy.Signature):
+    """Decision which format output is the best for the user's question, this output will be LLM instruction for the agent to generate the output"""
+    question: str = dspy.InputField(description="The question from user")
+    format_output: str = dspy.OutputField(description="The output format of the answer to user, what is the layout, sessions, should it contained table, markdown, or text, tree, ... This ")
 
 class AgentToolManager(dspy.Module):
     def __init__(self, mcp_config:Optional[Dict[str, Any]] = None):
         self.lm = dspy.LM(
-            model="openrouter/deepseek/deepseek-chat-v3-0324:free",
-            api_key=os.getenv("OR_KEY")
+            model=config.get("tool_llm","model"),
+            api_key=config.get("tool_llm","api_key")
         )
+        
         self._agents: Dict[str, ToolAgent] = {}
         self._lock = asyncio.Lock()
         self._current_config: Optional[Dict[str, Any]] = mcp_config
         self.description = ""
         self._coodinator = dspy.ChainOfThought(AgentToolManagerSignature)
-        self._coodinator.set_lm(self.lm)
         self._conclusion = dspy.ChainOfThought(AgentToolManagerConclusion)
-        self._conclusion.set_lm(self.lm)
-    
+        self._output_advisor = dspy.ChainOfThought(AgentOutputAdvisor)
+        self.change_mode(mode="free")
+
+    def change_mode(self, mode: str = "free"):
+        """Change the mode of the agent tool manager"""
+        if mode == "free":
+            self._coodinator.set_lm(self.lm)
+            self._conclusion.set_lm(self.lm)
+            self._output_advisor.set_lm(self.lm)
+        else:
+            raise ValueError("Unsupported mode, only 'free' is supported for now")
+        
     async def load_agent(self):
         """Create agent for each MCP tool collection"""
         if self._current_config is None:
@@ -84,13 +101,20 @@ class AgentToolManager(dspy.Module):
         """Check if agent is ready"""
         return list(self._agents.keys())
     
-    async def acall(self, question:str):
-        logger.debug(f"agent network: {self.description}")
-        plan = await self._coodinator.acall(question=question, agent_description=self.description)
-        data_collection = await self.execute_plans_parallel(plan.execution_plan)
-        conclusion = await self._conclusion.acall(original_question=question, data_collection=data_collection)
+    async def acall(self, question:str, context:str = ""):
+        output_format, plan = await self.generate_output_format(question=question, context=context)
+        data_collection = await self.execute_plans_parallel(plan)
+        conclusion = await self._conclusion.acall(original_question=question, data_collection=data_collection, output_format=output_format)
         return conclusion.final_answer
 
+    async def generate_output_format(self, question:str, context:str = ""):
+        tasks = [
+            self._output_advisor.acall(question=question, context=context),
+            self._coodinator.acall(question=question, context=context, agent_description=self.description)
+        ]
+        output_format, plan = await asyncio.gather(*tasks)
+        return output_format.format_output, plan.execution_plan
+    
     async def execute_plans_parallel(self, execution_plan:list[PlanModel]):
         # Create all tasks
         tasks = []
