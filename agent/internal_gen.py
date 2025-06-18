@@ -1,7 +1,7 @@
 from dspy import LM, ChainOfThought, InputField, OutputField, Signature
 import os
 from utils import logger
-
+from conf import config
 
 class InternalGenerator(Signature):
     information: str = InputField(description="Information about the agent capabilities can do with the tools supported")
@@ -15,8 +15,9 @@ class MemoryInfoExtract(Signature):
     information: str = OutputField(description="Information extracted from the history of conversation between user and assistant")
 
 lm = LM(
-    model="openrouter/meta-llama/llama-3.3-8b-instruct:free",
-    api_key=os.getenv("OR_KEY")
+    model=config.get("internal_llm", "model"),
+    api_key=config.get("internal_llm", "api_key"),
+    max_tokens=5000
 )
 internal_generator = ChainOfThought(InternalGenerator)
 internal_generator.set_lm(lm)

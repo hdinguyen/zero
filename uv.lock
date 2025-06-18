@@ -820,6 +820,7 @@ dependencies = [
     { name = "redis" },
     { name = "sqlalchemy" },
     { name = "weaviate-client" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -833,6 +834,7 @@ requires-dist = [
     { name = "redis", specifier = ">=6.2.0" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "weaviate-client", specifier = ">=4.15.0" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [[package]]

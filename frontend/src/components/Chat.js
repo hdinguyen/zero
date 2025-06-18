@@ -19,6 +19,7 @@ const Chat = () => {
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(false);
   const [chatsError, setChatsError] = useState(null);
+  const [socketMessages, setSocketMessages] = useState([]);
 
   // Fetch thread IDs on mount
   useEffect(() => {
@@ -283,29 +284,45 @@ const Chat = () => {
     });
   };
 
+  // Socket connection logic
+  useEffect(() => {
+    const socket = new WebSocket('ws://localhost:8000/ws');
+
+    socket.onopen = () => {
+      console.log('WebSocket connection opened');
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setSocketMessages(prevMessages => [...prevMessages, data.message]);
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, []);
+
   return (
     <div className="relative flex size-full min-h-screen flex-col bg-slate-50 group/design-root overflow-x-hidden font-inter">
       <div className="flex flex-1 h-full min-h-0">
         {/* Sidebar */}
         <aside className="w-80 flex flex-col bg-slate-50 flex-shrink-0 h-full border-r border-[#e7edf4]">
-          <div className="flex h-full min-h-[700px] flex-col justify-between p-4">
-            <div className="flex flex-col gap-4">
-              <h1 className="text-[#0d151c] text-base font-medium leading-normal">My AI Assistant</h1>
-              <div className="flex flex-col gap-2">
-                {/* New Chat Button */}
-                <div 
-                  onClick={handleNewChat}
-                  className="flex items-center gap-3 px-3 py-2 rounded-full bg-[#e7edf4] cursor-pointer hover:bg-[#d1dbe6] transition-colors"
-                >
-                  <div className="text-[#0d151c]" data-icon="Plus" data-size="24px" data-weight="fill">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256">
-                      <path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM184,136H136v48a8,8,0,0,1-16,0V136H72a8,8,0,0,1,0-16h48V72a8,8,0,0,1,16,0v48h48a8,8,0,0,1,0,16Z"></path>
-                    </svg>
-                  </div>
-                  <p className="text-[#0d151c] text-sm font-medium leading-normal">New Chat</p>
-                </div>
-                
-                {/* Chat List */}
+          <div className="flex flex-col flex-1 h-full p-4">
+            <h1 className="text-[#0d151c] text-base font-medium leading-normal mb-2">My AI Assistant</h1>
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* Chat List (scrollable, max 10 threads) */}
+              <div
+                className="overflow-y-auto"
+                style={{ maxHeight: `${10 * 48}px` }} // 48px per thread item
+              >
                 {chatsLoading ? (
                   <div className="text-xs text-gray-400 px-3 py-2">Loading chats...</div>
                 ) : chatsError ? (
@@ -315,6 +332,7 @@ const Chat = () => {
                     <div 
                       key={chat.thread_id} 
                       className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-[#e7edf4] rounded-lg transition-colors"
+                      style={{ minHeight: '48px', height: '48px' }}
                       onClick={async () => {
                         setError(null);
                         setIsTyping(false);
@@ -354,53 +372,16 @@ const Chat = () => {
                   ))
                 )}
               </div>
-            </div>
-            
-            {/* Bottom Section - Mode Toggle */}
-            <div className="flex flex-col gap-1">
-              <div className="px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`text-[#0d151c] ${isPaidMode ? 'text-yellow-600' : 'text-gray-500'}`} data-icon="Crown" data-size="20px" data-weight="regular">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20px" height="20px" fill="currentColor" viewBox="0 0 256 256">
-                        <path d="M248,80a8,8,0,0,0-8-8H219.31l-14.31-29.5a8,8,0,0,0-15.53,3.21l8.35,30.29H135.68l8.35-30.29a8,8,0,0,0-15.53-3.21L114.19,72H16a8,8,0,0,0-8,8,8,8,0,0,0,1.52,4.7L38.12,132.4A32,32,0,0,0,66.5,152h123A32,32,0,0,0,218,132.4l28.6-47.7A8,8,0,0,0,248,80ZM189.5,136H66.5A16,16,0,0,1,52.25,117.2L32.12,88H76.68l-8.35,30.29a8,8,0,0,0,15.53,3.21L98.17,88h59.66l14.31,33.5a8,8,0,0,0,15.53-3.21L179.32,88h44.56l-20.13,29.2A16,16,0,0,1,189.5,136Z"></path>
-                      </svg>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[#0d151c] text-sm font-medium">
-                        {isPaidMode ? 'Paid Mode' : 'Free Mode'}
-                      </span>
-                      <span className="text-[#49749c] text-xs">
-                        {isPaidMode ? 'Premium features enabled' : 'Basic features only'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={toggleMode}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                      isPaidMode ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  >
-                    <span className="sr-only">Toggle mode</span>
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        isPaidMode ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-                
-                {/* Mode Status Indicator */}
-                <div className="mt-2 flex items-center gap-1">
-                  <div className={`w-2 h-2 rounded-full ${
-                    isPaidMode ? 'bg-yellow-500' : 'bg-gray-400'
-                  }`}></div>
-                  <span className="text-xs text-[#49749c]">
-                    {isPaidMode ? 'Premium active' : 'Using free tier'}
-                  </span>
-                </div>
+              {/* Socket Messages Area (fills remaining space) */}
+              <div className="flex-1 min-h-0 mt-2 flex flex-col">
+                <label className="block text-xs font-medium text-[#49749c] mb-1">Server Socket Messages</label>
+                <textarea
+                  value={socketMessages.join('\n')}
+                  readOnly
+                  className="w-full flex-1 bg-[#f8fafc] border border-[#e7edf4] rounded p-2 text-xs text-[#0d151c] resize-none min-h-0 max-h-full overflow-y-auto"
+                  style={{ fontFamily: 'monospace', height: '100%' }}
+                  aria-label="Socket messages from server"
+                />
               </div>
             </div>
           </div>

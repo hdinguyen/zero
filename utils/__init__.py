@@ -20,7 +20,7 @@ SECONDARY_LOG_COLORS = {
 }
 
 LOG_LEVEL = logging.DEBUG
-LOGFORMAT = "%(log_color)s%(levelname)-8s%(reset)s | %(log_color)s%(message)s%(reset)s"
+LOGFORMAT = "%(log_color)s%(levelname)-8s%(reset)s | %(log_color)s%(filename)s:%(lineno)d%(reset)s | %(log_color)s%(message)s%(reset)s"
 
 formatter = ColoredFormatter(
     LOGFORMAT,

@@ -1,5 +1,5 @@
 import json
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, WebSocket
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 from agent.agent_tool_manager import AgentToolManager
@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from memory import Memory
 from fastapi.middleware.cors import CORSMiddleware
 import dspy
+from utils.chatsocket import ChatSocket, ConnectionManager
 
 mcp_config = {
     "context7": {
@@ -38,6 +39,7 @@ mcp_config = {
     },
 }
 
+connection_manager = ConnectionManager()
 agent_manager = AgentToolManager(mcp_config)
 memory = Memory()
 
@@ -94,7 +96,17 @@ async def get_conversation(thread_id: str, limit: int = 50, offset: int = 0):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "agent_ready": agent_manager.is_agent_ready()}
-    
+
+# @app.websocket("/ws/chat")
+# async def websocket_endpoint(websocket: WebSocket):
+#     handler = ChatSocket()
+#     await handler.handle(websocket)
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await connection_manager.connect(websocket)
+    await connection_manager.handler(websocket)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

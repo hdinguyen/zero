@@ -36,7 +36,8 @@ class AgentToolManager(dspy.Module):
     def __init__(self, mcp_config:Optional[Dict[str, Any]] = None):
         self.lm = dspy.LM(
             model=config.get("tool_llm","model"),
-            api_key=config.get("tool_llm","api_key")
+            api_key=config.get("tool_llm","api_key"),
+            max_tokens=6000
         )
         self.conclusion_lm = dspy.LM(
             model=config.get("conclusion_llm","model"),
