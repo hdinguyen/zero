@@ -1,5 +1,5 @@
 Hi, my name is Nguyen (a very Vietnamese name)!
-I do this project as an assistance that using LLM model (provided by Openrouter) and using DSPy framework.
+I do this project as an assistance that using LLM model (provided by Openrouter) and using [DSPy framework](https://dspy.ai/).
 In the project I also using MCP as an MCP client and a each MCP server (collection of set of tool) will be managed by an agent, because by that approach we will prevent the warning like
 ```
 Exceeding total tools limit
