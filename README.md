@@ -17,4 +17,5 @@ That all for now.
 Road map: A few more thing I really want to add soon:
 1. Feedback from user to the answer (to help evaluation and optimise)
 2. Socket streaming thinking process and data from the tool to UI
-3. Edit a question
+3. A2A protocol to seemless communicate agent cross machine
+4. Edit a question
